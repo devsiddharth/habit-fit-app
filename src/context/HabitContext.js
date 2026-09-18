@@ -1,113 +1,133 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import {
-  loadHabits, saveHabits,
-  loadCompletions, saveCompletions,
-  todayKey
-} from '../utils/storage';
+import { apiGetHabits, apiAddHabit, apiToggleHabit, apiDeleteHabit, apiCalendar, ApiError } from '../utils/api';
 
 const Ctx = createContext(null);
 
+const normalize = (h) => ({
+  id: h.id,
+  name: h.name,
+  goal: h.goal || 'Daily',
+  icon: h.icon || '🎯',
+  color: h.color || '#22d3a8',
+  colorDim: h.colorDim || 'rgba(34,211,168,0.12)',
+  streak: h.streak ?? 0,
+  completion: h.completion ?? 0,
+  done: !!h.done,
+  createdAt: h.createdAt,
+});
+
+/**
+ * Global habit state, sourced from the Java backend (MySQL).
+ * completionMap = { "YYYY-MM-DD": [habitId, ...] } — powers the calendar,
+ * stats, and achievements exactly as before, but now persisted server-side.
+ */
 export function HabitProvider({ children }) {
   const { user } = useAuth();
-  const [habits,        setHabits]        = useState([]);  // always [] for new users
-  const [completionMap, setCompletionMap] = useState({});  // { "YYYY-MM-DD": [id,id] }
+  const [habits,        setHabits]        = useState([]);
+  const [completionMap, setCompletionMap] = useState({});
+  const [error,         setError]         = useState('');
+  const [loading,       setLoading]       = useState(false);
 
-  // ── Load from storage when user changes ──────────────────────────────────
+  const todayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // ── Load from API when user logs in ────────────────────────────────────────
   useEffect(() => {
     if (!user) { setHabits([]); setCompletionMap({}); return; }
-    const h = loadHabits(user.email);         // returns [] for new users
-    const c = loadCompletions(user.email);    // returns {} for new users
-    // Sync today's done flags onto habit objects
-    const today = todayKey();
-    const todayIds = new Set(c[today] || []);
-    setHabits(h.map(habit => ({ ...habit, done: todayIds.has(habit.id) })));
-    setCompletionMap(c);
-  }, [user]);
 
-  // ── Persist whenever habits or completions change ─────────────────────────
-  useEffect(() => {
-    if (!user) return;
-    saveHabits(user.email, habits);
-  }, [habits, user]);
+    let cancelled = false;
+    setLoading(true);
+    setError('');
 
-  useEffect(() => {
-    if (!user) return;
-    saveCompletions(user.email, completionMap);
-  }, [completionMap, user]);
+    (async () => {
+      try {
+        const [habitList, cal] = await Promise.all([apiGetHabits(), fetchCalendar()]);
+        if (cancelled) return;
+        setHabits(habitList.map(normalize));
 
-  // ── Add habit — starts with streak=0, completion=0 ───────────────────────
-  const addHabit = useCallback((data) => {
-    const habit = {
-      id:         Date.now(),
-      name:       data.name,
-      goal:       data.goal || 'Daily',
-      icon:       data.icon || '🎯',
-      color:      data.color || '#22d3a8',
-      colorDim:   data.colorDim || 'rgba(34,211,168,0.12)',
-      streak:     0,      // ← always 0 for a brand-new habit
-      completion: 0,      // ← always 0
-      done:       false,
-      createdAt:  todayKey(),
-    };
-    setHabits(prev => [...prev, habit]);
-    return habit;
+        const map = {};
+        Object.entries(cal.days || {}).forEach(([day, ids]) => { map[day] = ids; });
+        setCompletionMap(map);
+      } catch (err) {
+        if (!cancelled) setError(err.message || 'Failed to load habits.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.email]);
+
+  // ── Calendar fetch (last ~13 months so past months are navigable) ──────────
+  const fetchCalendar = useCallback(async () => {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+    const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return apiCalendar(fmt(from), fmt(to));
   }, []);
 
-  // ── Toggle daily completion ───────────────────────────────────────────────
-  const toggleHabit = useCallback((id) => {
-    const today = todayKey();
+  // ── Commands (each returns the fresh server state) ─────────────────────────
+  const addHabit = useCallback(async (data) => {
+    const created = await apiAddHabit(data);
+    setHabits(prev => [...prev, normalize(created)]);
+    return created;
+  }, []);
 
+  const toggleHabit = useCallback(async (id) => {
+    // Optimistic flip for snappy UI; server response overrides it.
+    let nowDone = false;
     setHabits(prev => prev.map(h => {
       if (h.id !== id) return h;
-      const nowDone = !h.done;
-
-      // Recalculate streak:
-      // If marking done   → streak + 1
-      // If un-marking     → streak - 1 (min 0)
-      const newStreak = nowDone
-        ? h.streak + 1
-        : Math.max(0, h.streak - 1);
-
-      // Recalculate completion % based on completionMap history
-      return { ...h, done: nowDone, streak: newStreak };
+      nowDone = !h.done;
+      return { ...h, done: nowDone };
     }));
 
-    // Update completionMap for today
-    setCompletionMap(prev => {
-      const existing = [...(prev[today] || [])];
-      const habit    = habits.find(h => h.id === id);
-      if (!habit) return prev;
-      const nowDone  = !habit.done;
-      const updated  = nowDone
-        ? [...new Set([...existing, id])]
-        : existing.filter(x => x !== id);
-      return { ...prev, [today]: updated };
-    });
-  }, [habits]);
+    try {
+      const updated = await apiToggleHabit(id);
+      setHabits(prev => prev.map(h => (h.id === id ? { ...h, streak: updated.streak, completion: updated.completion, done: updated.done } : h)));
+    } catch (err) {
+      // Revert on failure
+      setHabits(prev => prev.map(h => (h.id === id ? { ...h, done: !nowDone } : h)));
+      setError(err.message || 'Toggle failed.');
+      throw err;
+    }
 
-  // ── Delete habit ──────────────────────────────────────────────────────────
-  const deleteHabit = useCallback((id) => {
+    // Refresh the calendar map (today's bucket changed; streaks may shift)
+    try {
+      const cal = await fetchCalendar();
+      const map = {};
+      Object.entries(cal.days || {}).forEach(([day, ids]) => { map[day] = ids; });
+      setCompletionMap(map);
+    } catch { /* non-fatal */ }
+  }, [fetchCalendar]);
+
+  const deleteHabit = useCallback(async (id) => {
     setHabits(prev => prev.filter(h => h.id !== id));
-    // Also remove from all completions
-    setCompletionMap(prev => {
-      const copy = { ...prev };
-      Object.keys(copy).forEach(date => {
-        copy[date] = copy[date].filter(x => x !== id);
-      });
-      return copy;
-    });
-  }, []);
+    try {
+      await apiDeleteHabit(id);
+      const cal = await fetchCalendar();
+      const map = {};
+      Object.entries(cal.days || {}).forEach(([day, ids]) => { map[day] = ids; });
+      setCompletionMap(map);
+    } catch (err) {
+      setError(err.message || 'Delete failed.');
+      throw err;
+    }
+  }, [fetchCalendar]);
 
-  // ── Computed values ───────────────────────────────────────────────────────
-  const todayDone    = habits.filter(h => h.done).length;
-  const todayTotal   = habits.length;
-  const todayPct     = todayTotal ? Math.round((todayDone / todayTotal) * 100) : 0;
-  const bestStreak   = habits.length ? Math.max(...habits.map(h => h.streak)) : 0;
+  // ── Computed values (same shape as before) ─────────────────────────────────
+  const todayDone  = habits.filter(h => h.done).length;
+  const todayTotal = habits.length;
+  const todayPct   = todayTotal ? Math.round((todayDone / todayTotal) * 100) : 0;
+  const bestStreak = habits.length ? Math.max(...habits.map(h => h.streak)) : 0;
 
   return (
     <Ctx.Provider value={{
-      habits, completionMap,
+      habits, completionMap, loading, error,
       addHabit, toggleHabit, deleteHabit,
       todayDone, todayTotal, todayPct, bestStreak,
     }}>

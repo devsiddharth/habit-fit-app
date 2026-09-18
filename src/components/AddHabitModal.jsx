@@ -15,25 +15,33 @@ const COLORS = [
 
 export default function AddHabitModal({ onClose, onSuccess }) {
   const { addHabit } = useHabits();
-  const [name,  setName]  = useState('');
-  const [goal,  setGoal]  = useState('');
-  const [icon,  setIcon]  = useState('🎯');
-  const [color, setColor] = useState(COLORS[0]);
-  const [err,   setErr]   = useState('');
+  const [name,    setName]    = useState('');
+  const [goal,    setGoal]    = useState('');
+  const [icon,    setIcon]    = useState('🎯');
+  const [color,   setColor]   = useState(COLORS[0]);
+  const [err,     setErr]     = useState('');
+  const [saving,  setSaving]  = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!name.trim()) { setErr('Please enter a habit name.'); return; }
-    addHabit({ name: name.trim(), goal: goal.trim() || 'Daily', icon, color: color.hex, colorDim: color.dim });
-    onSuccess?.(`"${name.trim()}" added! Start your journey 🚀`);
-    onClose();
+    setErr(''); setSaving(true);
+    try {
+      await addHabit({ name: name.trim(), goal: goal.trim() || 'Daily', icon, color: color.hex, colorDim: color.dim });
+      onSuccess?.(`"${name.trim()}" added! Start your journey 🚀`);
+      onClose();
+    } catch (e) {
+      setErr(e.message || 'Could not save. Is the backend running?');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
       <div className="modal">
         <div className="modal-hdr">
           <span className="modal-title">Add New Habit</span>
-          <button className="modal-close" onClick={onClose}><i className="ti ti-x" /></button>
+          <button className="modal-close" onClick={onClose} disabled={saving}><i className="ti ti-x" /></button>
         </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -95,9 +103,11 @@ export default function AddHabitModal({ onClose, onSuccess }) {
         </div>
 
         <div style={{ display:'flex', gap:10, marginTop:22 }}>
-          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-gold" onClick={submit}>
-            <i className="ti ti-plus" style={{ fontSize:14 }} /> Save Habit
+          <button className="btn btn-outline" onClick={onClose} disabled={saving}>Cancel</button>
+          <button className="btn btn-gold" onClick={submit} disabled={saving}>
+            {saving
+              ? <><div className="spinner" />Saving...</>
+              : <><i className="ti ti-plus" style={{ fontSize:14 }} /> Save Habit</>}
           </button>
         </div>
       </div>

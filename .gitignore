@@ -1,7 +1,11 @@
 # dependencies
 /node_modules
 
-# build output
+# backend build output
+/backend/target
+/backend/.mvn/wrapper/maven-wrapper.jar
+
+# frontend build output
 /build
 
 # env files
@@ -15,6 +19,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# e2e screenshots
+e2e/shots/
 
 # IDE
 .vscode/

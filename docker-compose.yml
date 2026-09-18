@@ -1,0 +1,50 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: habitfit-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: habitfit
+      MYSQL_USER: habitfit
+      MYSQL_PASSWORD: habitfit
+    ports:
+      - "3308:3306"
+    volumes:
+      - habitfit-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    container_name: habitfit-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: habitfit
+      MYSQL_USER: habitfit
+      MYSQL_PASSWORD: habitfit
+      JWT_SECRET: habitfit-demo-secret-key-change-me-0123456789abcdef
+    ports:
+      - "8091:8080"
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: habitfit-phpmyadmin
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 50M
+    ports:
+      - "8085:80"
+    profiles: ["tools"]
+
+volumes:
+  habitfit-mysql-data:

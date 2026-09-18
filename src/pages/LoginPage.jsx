@@ -15,10 +15,13 @@ export default function LoginPage() {
   const [loading,  setLoading]  = useState(false);
   const [gLoad,    setGLoad]    = useState(false);
 
+  // Same flag as src/index.js — see there for why.
+  const googleEnabled = Boolean(process.env.REACT_APP_GOOGLE_CLIENT_ID);
+
   const validate = () => {
     const e = {};
     if (!email.trim())                       e.email    = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email))   e.email    = 'Enter a valid email';
+    else if (!/\S+@\S+\.\S+/.test(email))    e.email    = 'Enter a valid email';
     if (!password)                           e.password = 'Password is required';
     return e;
   };
@@ -33,13 +36,14 @@ export default function LoginPage() {
     finally { setLoading(false); }
   };
 
+  // No client ID configured → don't even create the useGoogleLogin hook flow.
   const googleLogin = useGoogleLogin({
     onSuccess: async (tok) => {
       setGLoad(true);
       try {
         const res  = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${tok.access_token}` } });
         const prof = await res.json();
-        signInWithGoogle({ name: prof.name, email: prof.email, picture: prof.picture });
+        await signInWithGoogle({ name: prof.name, email: prof.email, picture: prof.picture });
         navigate('/');
       } catch { setApiErr('Google sign-in failed.'); }
       finally { setGLoad(false); }
@@ -60,12 +64,15 @@ export default function LoginPage() {
         <div className="auth-title">Welcome back 👋</div>
         <div className="auth-subtitle">Sign in to continue your journey</div>
 
-        <button className="btn btn-google" onClick={() => { setApiErr(''); googleLogin(); }} disabled={gLoad || loading} style={{ marginBottom:6 }}>
-          {gLoad ? <div className="spinner" style={{ borderTopColor:'#4285F4', borderColor:'rgba(66,133,244,.2)' }} /> : <GoogleIcon />}
-          {gLoad ? 'Signing in...' : 'Continue with Google'}
-        </button>
-
-        <div className="divider">or sign in with email</div>
+        {googleEnabled && (
+          <>
+            <button className="btn btn-google" onClick={() => { setApiErr(''); googleLogin(); }} disabled={gLoad || loading} style={{ marginBottom:6 }}>
+              {gLoad ? <div className="spinner" style={{ borderTopColor:'#4285F4', borderColor:'rgba(66,133,244,.2)' }} /> : <GoogleIcon />}
+              {gLoad ? 'Signing in...' : 'Continue with Google'}
+            </button>
+            <div className="divider">or sign in with email</div>
+          </>
+        )}
 
         <form onSubmit={submit} noValidate style={{ display:'flex', flexDirection:'column', gap:14, marginTop:6 }}>
           {apiErr && (

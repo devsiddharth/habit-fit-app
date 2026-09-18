@@ -17,11 +17,13 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [gLoad,   setGLoad]   = useState(false);
 
+  const googleEnabled = Boolean(process.env.REACT_APP_GOOGLE_CLIENT_ID);
+
   const validate = () => {
     const e = {};
     if (!name.trim())                        e.name  = 'Full name is required';
     if (!email.trim())                       e.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(email))   e.email = 'Enter a valid email';
+    else if (!/\S+@\S+\.\S+/.test(email))    e.email = 'Enter a valid email';
     if (!pw)                                 e.pw    = 'Password is required';
     else if (pw.length < 6)                  e.pw    = 'Min. 6 characters';
     if (pw !== cpw)                          e.cpw   = 'Passwords do not match';
@@ -44,7 +46,7 @@ export default function SignupPage() {
       try {
         const res  = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization:`Bearer ${tok.access_token}` } });
         const prof = await res.json();
-        signInWithGoogle({ name: prof.name, email: prof.email, picture: prof.picture });
+        await signInWithGoogle({ name: prof.name, email: prof.email, picture: prof.picture });
         navigate('/');
       } catch { setApiErr('Google sign-up failed.'); }
       finally { setGLoad(false); }
@@ -65,12 +67,15 @@ export default function SignupPage() {
         <div className="auth-title">Create account 🌱</div>
         <div className="auth-subtitle">Your journey starts from zero — and that's perfect.</div>
 
-        <button className="btn btn-google" onClick={() => { setApiErr(''); googleLogin(); }} disabled={gLoad || loading} style={{ marginBottom:6 }}>
-          {gLoad ? <div className="spinner" style={{ borderTopColor:'#4285F4', borderColor:'rgba(66,133,244,.2)' }} /> : <GoogleIcon />}
-          {gLoad ? 'Signing up...' : 'Continue with Google'}
-        </button>
-
-        <div className="divider">or sign up with email</div>
+        {googleEnabled && (
+          <>
+            <button className="btn btn-google" onClick={() => { setApiErr(''); googleLogin(); }} disabled={gLoad || loading} style={{ marginBottom:6 }}>
+              {gLoad ? <div className="spinner" style={{ borderTopColor:'#4285F4', borderColor:'rgba(66,133,244,.2)' }} /> : <GoogleIcon />}
+              {gLoad ? 'Signing up...' : 'Continue with Google'}
+            </button>
+            <div className="divider">or sign up with email</div>
+          </>
+        )}
 
         <form onSubmit={submit} noValidate style={{ display:'flex', flexDirection:'column', gap:13, marginTop:6 }}>
           {apiErr && (
@@ -79,8 +84,8 @@ export default function SignupPage() {
             </div>
           )}
           {[
-            { label:'Full name',         val:name,  set:setName,  key:'name',  type:'text',     ph:'Ankit Kumar'           },
-            { label:'Email',             val:email, set:setEmail, key:'email', type:'email',    ph:'you@example.com'       },
+            { label:'Full name', val:name,  set:setName,  key:'name',  type:'text',  ph:'Ankit Kumar'     },
+            { label:'Email',     val:email, set:setEmail, key:'email', type:'email', ph:'you@example.com' },
           ].map(({ label, val, set, key, type, ph }) => (
             <div className="form-group" key={key}>
               <label className="form-label">{label}</label>

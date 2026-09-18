@@ -3,20 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useHabits } from '../context/HabitContext';
 import { ACHIEVEMENT_DEFS, computeUnlocked } from '../utils/achievements';
+import { loadSettings, saveSettings } from '../utils/storage';
 
 const initials = (n='') => n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() || 'HF';
-const firstName = (n='') => n.split(' ')[0] || 'User';
 
 export default function ProfilePage() {
   const { user, signOut }  = useAuth();
   const { habits, completionMap, bestStreak, todayDone, todayTotal } = useHabits();
   const navigate = useNavigate();
 
-  const [settings, setSettings] = useState({ reminders:true, darkMode:true, weeklyReport:false, aiMotivation:true });
-  const toggle = (k) => setSettings(s => ({ ...s, [k]:!s[k] }));
+  const [settings, setSettings] = useState(() => ({
+    reminders:true, darkMode:true, weeklyReport:false, aiMotivation:true,
+    ...loadSettings(),
+  }));
+  const toggle = (k) => setSettings(s => {
+    const next = { ...s, [k]: !s[k] };
+    saveSettings(next);
+    return next;
+  });
 
   const unlocked = computeUnlocked({ habits, completionMap });
-  const avgRate  = habits.length ? Math.round(habits.reduce((s,h) => s + h.completion, 0) / habits.length) : 0;
   const totalDaysTracked = Object.values(completionMap).filter(ids => ids.length > 0).length;
 
   const SETTINGS = [

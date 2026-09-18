@@ -1,51 +1,50 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { saveSession, loadSession, clearSession, loadAccounts, saveAccounts } from '../utils/storage';
+import { apiSignup, apiLogin, apiGoogle, apiMe, setToken, clearToken, getToken, ApiError } from '../utils/api';
 
 const Ctx = createContext(null);
 
+/**
+ * Global auth state. The JWT lives in localStorage; on mount we validate it
+ * against the backend (GET /api/auth/me) so a stale/expired token logs out
+ * cleanly instead of rendering a broken app.
+ */
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user,    setUser]    = useState(null);   // { name, email, picture, provider }
+  const [loading, setLoading] = useState(true);   // true until /me resolves
 
   useEffect(() => {
-    setUser(loadSession());
-    setLoading(false);
+    const restore = async () => {
+      if (!getToken()) { setLoading(false); return; }
+      try {
+        const me = await apiMe();          // 200 → token still valid
+        setUser(me);
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 0)) clearToken();
+        else if (err.status !== 0) clearToken();
+      } finally {
+        setLoading(false);
+      }
+    };
+    restore();
   }, []);
 
-  const _persist = (u) => { setUser(u); saveSession(u); };
-
-  // Email signup — brand new account, starts from scratch
-  const signUp = ({ name, email, password }) => new Promise((res, rej) => {
-    setTimeout(() => {
-      const accounts = loadAccounts();
-      if (accounts.find(a => a.email === email))
-        return rej(new Error('An account with this email already exists.'));
-      saveAccounts([...accounts, { name, email, password }]);
-      const u = { name, email, picture: null, provider: 'email' };
-      _persist(u);
-      res(u);
-    }, 600);
-  });
-
-  // Email sign-in
-  const signIn = ({ email, password }) => new Promise((res, rej) => {
-    setTimeout(() => {
-      const match = loadAccounts().find(a => a.email === email && a.password === password);
-      if (!match) return rej(new Error('Invalid email or password.'));
-      const u = { name: match.name, email: match.email, picture: null, provider: 'email' };
-      _persist(u);
-      res(u);
-    }, 600);
-  });
-
-  // Google sign-in
-  const signInWithGoogle = ({ name, email, picture }) => {
-    const u = { name, email, picture, provider: 'google' };
-    _persist(u);
-    return u;
+  /** Shared: persist token + set user from an AuthResponse. */
+  const _applyAuth = (data) => {
+    setToken(data.token);
+    setUser({ name: data.name, email: data.email, picture: data.picture, provider: data.provider });
+    return data;
   };
 
-  const signOut = () => { setUser(null); clearSession(); };
+  const signUp = async ({ name, email, password }) =>
+    _applyAuth(await apiSignup({ name, email, password }));
+
+  const signIn = async ({ email, password }) =>
+    _applyAuth(await apiLogin({ email, password }));
+
+  const signInWithGoogle = async ({ name, email, picture }) =>
+    _applyAuth(await apiGoogle({ name, email, picture }));
+
+  const signOut = () => { clearToken(); setUser(null); };
 
   return (
     <Ctx.Provider value={{ user, loading, signUp, signIn, signInWithGoogle, signOut }}>

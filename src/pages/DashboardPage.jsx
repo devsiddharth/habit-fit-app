@@ -17,15 +17,29 @@ const firstName = (n = '') => n.split(' ')[0] || 'there';
 
 export default function DashboardPage({ onAddHabit }) {
   const { user }   = useAuth();
-  const { habits, toggleHabit, todayDone, todayTotal, todayPct, bestStreak } = useHabits();
+  const { habits, toggleHabit, deleteHabit, todayDone, todayTotal, todayPct, bestStreak } = useHabits();
   const [confettiId, setConfettiId] = useState(null);
   const [qIdx,       setQIdx]       = useState(0);
   const [qAnim,      setQAnim]      = useState(false);
+  const [busyId,     setBusyId]     = useState(null);
+  const [actionErr,  setActionErr]  = useState('');
 
-  const handleToggle = (id) => {
-    const h = habits.find(h => h.id === id);
+  const handleToggle = async (id) => {
+    const h = habits.find(x => x.id === id);
     if (h && !h.done) { setConfettiId(id); setTimeout(() => setConfettiId(null), 900); }
-    toggleHabit(id);
+    setBusyId(id); setActionErr('');
+    try { await toggleHabit(id); }
+    catch (e) { setActionErr(e.message || 'Could not update habit.'); }
+    finally { setBusyId(null); }
+  };
+
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this habit? Its history stays in your stats.')) return;
+    setBusyId(id); setActionErr('');
+    try { await deleteHabit(id); }
+    catch (err) { setActionErr(err.message || 'Could not delete habit.'); }
+    finally { setBusyId(null); }
   };
 
   const nextQuote = () => {
@@ -138,6 +152,12 @@ export default function DashboardPage({ onAddHabit }) {
           {habits.length > 0 && <span className="sec-badge">{habits.length} habits</span>}
         </div>
 
+        {actionErr && (
+          <div style={{ background:'rgba(248,113,113,0.1)', border:'1px solid rgba(248,113,113,0.25)', borderRadius:8, padding:'9px 13px', fontSize:12, color:'var(--red)', marginBottom:12 }}>
+            {actionErr}
+          </div>
+        )}
+
         {habits.length === 0 ? (
           <div className="empty-state">
             <div className="emoji">🌱</div>
@@ -150,7 +170,7 @@ export default function DashboardPage({ onAddHabit }) {
           <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
             {habits.map((h, i) => (
               <div key={h.id} className={`habit-row ${h.done ? 'done' : ''}`}
-                style={{ borderLeftColor: h.done ? h.color : 'transparent', animationDelay:`${.22 + i * .05}s` }}
+                style={{ borderLeftColor: h.done ? h.color : 'transparent', animationDelay:`${.22 + i * .05}s`, cursor: busyId === h.id ? 'wait' : 'pointer', opacity: busyId === h.id ? .7 : 1 }}
                 onClick={() => handleToggle(h.id)}>
                 <Confetti show={confettiId === h.id} />
                 <div style={{ width:36, height:36, borderRadius:9, flexShrink:0, background:h.colorDim, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>
@@ -174,6 +194,12 @@ export default function DashboardPage({ onAddHabit }) {
                     {h.done && <i className="ti ti-check" style={{ color: h.color === '#E8B84B' ? '#0b0d14' : '#fff', fontSize:13 }} />}
                   </div>
                 </div>
+                <button title="Delete habit" onClick={(e) => handleDelete(e, h.id)} style={{
+                  marginLeft:6, flexShrink:0, width:28, height:28, borderRadius:8,
+                  background:'transparent', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:14
+                }}>
+                  <i className="ti ti-trash" />
+                </button>
               </div>
             ))}
           </div>

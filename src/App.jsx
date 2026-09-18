@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { HabitProvider }         from './context/HabitContext';
+import { HabitProvider, useHabits } from './context/HabitContext';
 import Sidebar                   from './components/Sidebar';
 import AddHabitModal             from './components/AddHabitModal';
 import Toast                     from './components/Toast';
@@ -13,10 +13,10 @@ import InsightsPage              from './pages/InsightsPage';
 import ProfilePage               from './pages/ProfilePage';
 
 const MOB_NAV = [
-  { id:'dashboard',  icon:'ti-layout-dashboard', label:'Home'    },
-  { id:'statistics', icon:'ti-calendar-stats',   label:'Stats'   },
-  { id:'insights',   icon:'ti-brain',             label:'Insights'},
-  { id:'profile',    icon:'ti-user',              label:'Profile' },
+  { id:'dashboard',  icon:'ti-layout-dashboard', label:'Home'     },
+  { id:'statistics', icon:'ti-calendar-stats',   label:'Stats'    },
+  { id:'insights',   icon:'ti-brain',            label:'Insights' },
+  { id:'profile',    icon:'ti-user',             label:'Profile'  },
 ];
 
 function AppLayout() {
@@ -36,8 +36,8 @@ function AppLayout() {
     switch (tab) {
       case 'dashboard':  return <DashboardPage  onAddHabit={() => setShowModal(true)} />;
       case 'statistics': return <StatisticsPage />;
-      case 'insights':   return <InsightsPage />;
-      case 'profile':    return <ProfilePage />;
+      case 'insights':   return <InsightsPage   />;
+      case 'profile':    return <ProfilePage    />;
       default:           return <DashboardPage  onAddHabit={() => setShowModal(true)} />;
     }
   };
